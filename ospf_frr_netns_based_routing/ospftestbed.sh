@@ -2,6 +2,7 @@
 
 ZEBRA=/usr/lib/frr/zebra
 OSPFD=/usr/lib/frr/ospfd
+OSPFD_CONFIG=ospf_frr_netns_based_routing
 
 case "$1" in
 create)
@@ -32,8 +33,25 @@ create)
   ;; #End of create router
 
 run)
+  mkdir -p /var/run/frr/${OSPFD_CONFIG}
+  chown frr:frr /var/run/frr/${OSPFD_CONFIG}
+
   for rt in R1 R2
   do
+    ip netns exec ${rt} ${ZEBRA} -d \
+      -f /etc/frr/${OSPFD_CONFIG}/${rt}_zebra.conf \
+      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.pid \
+      -A 127.0.0.1 \
+      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty --log stdout
+
+    ip netns exec ${rt} ${OSPFD} -d \
+      -f /etc/frr/${OSPFD_CONFIG}/${rt}_ospfd.conf \
+      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_ospfd.pid \
+      -A 127.0.0.1 \
+      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty --log stdout
+
+  done
+
     ip netns exec ${rt} ${ZEBRA} -d \
 	  -f /etc/frr/${rt}_zebra.conf \
 	  -i /var/run/frr/${rt}_zebra.pid \
