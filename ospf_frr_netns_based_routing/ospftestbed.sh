@@ -4,11 +4,13 @@ ZEBRA=/usr/lib/frr/zebra
 OSPFD=/usr/lib/frr/ospfd
 OSPFD_CONFIG=/ospf-frr/ospf_frr_netns_based_routing
 
+routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
+
 case "$1" in
 create)
 
   # create router(8)
-  for ns in RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8
+  for ns in $routers
   do
     ip netns add ${ns}
   done
@@ -21,6 +23,11 @@ create)
   ip link add RT5_to_RT3 type veth peer name RT3_to_RT5
   ip link add RT6_to_RT3 type veth peer name RT3_to_RT6
   ip link add RT6_to_RT8 type veth peer name RT8_to_RT6
+
+  # REdundancy link 
+  ip link add RT1_to_RT22 type veth peer name RT22_to_RT1
+  ip link add RT22_to_RT3 type veth peer name RT3_to_RT22
+  # REdundancy link end
 
   # Connect wires(7*2way)
   ip link set RT1_to_RT2 netns RT1 up
@@ -44,7 +51,14 @@ create)
   
   ip link set RT8_to_RT6 netns RT8 up
   
-
+  #Redundancy link up
+  ip link set RT1_to_RT22 netns RT1 up
+  
+  ip link set RT22_to_RT1 netns RT22 up
+  ip link set RT22_to_RT3 netns RT22 up
+  
+  ip link set RT3_to_RT22 netns RT3 up
+  #Redundancy link up end
 
   # IP assign on Specific Router's Interfaces
   ip netns exec RT1 ip addr add 172.16.13.1/24 dev RT1_to_RT2
@@ -66,9 +80,15 @@ create)
 
   ip netns exec RT8 ip addr add 12.0.0.3/24 dev RT8_to_RT6
 
+  # Redundancy IP assign on Specific Router's Interfaces
+  ip netns exec RT1 ip addr add 172.17.13.1/24 dev RT1_to_RT22
+  ip netns exec RT3 ip addr add 172.18.13.1/24 dev RT3_to_RT22
+  ip netns exec RT22 ip addr add 172.17.13.3/24 dev RT22_to_RT1
+  ip netns exec RT22 ip addr add 172.18.13.3/24 dev RT22_to_RT3
+  # Redundancy IP assign on Specific Router's Interfaces ends
 
   # local link up for local routing
-  for rt in RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8
+  for rt in $routers
   do
       ip netns exec ${rt} ip addr add 127.0.0.1/8 dev lo
       ip netns exec ${rt} ip link set lo up
@@ -80,7 +100,7 @@ run)
   mkdir -p /var/run/frr/${OSPFD_CONFIG}
   chown frr:frr /var/run/frr/${OSPFD_CONFIG}
 
-  for rt in RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8
+  for rt in $routers
   do
     ip netns exec ${rt} ${ZEBRA} -d \
       -f /etc/frr/${OSPFD_CONFIG}/${rt}_zebra.conf \
@@ -100,7 +120,7 @@ delete)
   pkill -u frr 
   pkill -u frr 
 
-  for ns in RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8
+  for ns in $routers
   do
     ip netns delete ${ns}
   done
@@ -110,8 +130,12 @@ show)
   ip netns list
   ps -ef | grep frr
   ;; #End of show
+test)
+    echo "Sending 5 ICMP"
+  ip netns exec RT4 ping 12.0.0.3 -c 5
+  ;; #End of test
 *)
-  echo "usage $0 [create|run|delete|show]"
+  echo "usage $0 [create|run|delete|show|test]"
   ;;
 esac
 

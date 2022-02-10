@@ -6,11 +6,16 @@ spawn ip netns exec $arg1 telnet localhost 2601
 expect "*?assword:*"
 send -- "zebra\r"
 
-expect ">"
 send -- "$arg2\r"
+expect {
+       -ex "--More--" {send -- " "; exp_continue}
+            ">" {send -- "exit \r"}
+}
+#send -- "$arg2\r"
+
 
 
 #interact
-expect ">"
-send -- "exit\r"
+#expect ">"
+#send -- "exit\r"
 
