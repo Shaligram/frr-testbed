@@ -1,0 +1,16 @@
+#!/usr/bin/expect -a
+#expect /root/telnet_zebra.sh R1 "show ip route"
+lassign $argv arg1 arg2 arg3
+
+spawn ip netns exec $arg1 telnet localhost 2601
+expect "*?assword:*"
+send -- "zebra\r"
+
+expect ">"
+send -- "$arg2\r"
+
+
+#interact
+expect ">"
+send -- "exit\r"
+

@@ -1,0 +1,20 @@
+#!/usr/bin/expect -f
+#Usage - expect /root/telnet.sh R1 "show ip ospf database"
+lassign $argv arg1 arg2 arg3
+
+spawn ip netns exec $arg1 telnet localhost 2604
+expect "*?assword:*"
+send -- "zebra\r"
+send -- "\r"
+expect ">"
+send -- "show ip ospf neighbor\r"
+
+
+expect ">"
+send -- "$arg2\r"
+
+
+#interact
+expect ">"
+send -- "exit\r"
+
