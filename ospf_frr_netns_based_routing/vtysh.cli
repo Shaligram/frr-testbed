@@ -1,24 +1,33 @@
 #!/usr/bin/expect -f
-#Usage - expect /root/telnet.sh R1 "show ip ospf database"
+#Usage -./vtysh.cli R1 0 "show ip ospf database"
+#Usage -./vtysh.cli R1 1 "show ip route"
 lassign $argv arg1 arg2 arg3
+log_user 0
 
-
-spawn ip netns exec $arg1 telnet localhost 2604
+if {$arg2 == 1} {
+    spawn ip netns exec $arg1 telnet localhost 2601;
+} else {
+    spawn ip netns exec $arg1 telnet localhost 2604;
+}
 expect "*?assword:*"
 send -- "zebra\r"
-expect ">"
-send -- "show ip ospf neighbor\r"
+log_user 1
 
-send -- "$arg2\r"
-expect {
-       -ex "--More--" {send -- " "; exp_continue}
-            ">" {send -- "exit \r"}
-}
-#send -- "$arg2\r"
-
-
-
-#interact
 #expect ">"
-#send -- "exit\r"
+#send -- "show ip ospf neighbor\r"
 
+send -- "$arg3\r"
+expect {
+    -ex "--More--" {send -- " "; exp_continue}
+    ">" {send -- "\r"}
+}
+#send -- "$arg3\r"
+
+
+if { 0 } {
+    interact
+} else {
+    expect ">"
+        send -- "exit\r"
+}
+puts "\n"

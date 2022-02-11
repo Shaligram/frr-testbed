@@ -113,6 +113,8 @@ run)
       -i /var/run/frr/${OSPFD_CONFIG}/${rt}_ospfd.pid \
       -A 127.0.0.1 \
       -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty --log stdout
+    echo "Zebra OSPF Up for Router instance ${rt} \n\n\n"
+    sleep 5
   done
   ;; #End of run
 
@@ -132,7 +134,17 @@ show)
   ;; #End of show
 test)
     echo "Sending 5 ICMP"
-  ip netns exec RT4 ping 12.0.0.3 -c 5
+  ip netns exec RT4 ping 12.0.0.3 -c 2
+    echo "Sending 5 ICMP"
+  ip netns exec RT7 ping 12.0.0.3 -c 2
+    echo "Sending 5 ICMP"
+  ip netns exec RT8 ping 192.168.1.254 -c 2
+    echo "Sending 5 ICMP"
+  ip netns exec RT5 ping 192.168.4.254 -c 2
+    echo "Sending 5 ICMP"
+  ip netns exec RT4 ping 192.168.4.254 -c 2
+    echo "Sending 5 ICMP"
+  ip netns exec RT5 ping 12.0.0.3 -c 2
   ;; #End of test
 *)
   echo "usage $0 [create|run|delete|show|test]"
