@@ -98,7 +98,7 @@ create)
   
   ;; #End of create router
 
-run)
+runstdlog)
   mkdir -p /var/run/frr/${OSPFD_CONFIG}
   chown frr:frr /var/run/frr/${OSPFD_CONFIG}
 
@@ -118,14 +118,43 @@ run)
       -i /var/run/frr/${OSPFD_CONFIG}/${rt}_ospfd.pid \
       -A 127.0.0.1 \
       -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty --log stdout
-    echo "Zebra OSPF Up for Router instance ${rt} \n\n\n"
+    echo "Zebra OSPF Up for Router instance ${rt} \n"
     sleep 5
   done
   ;; #End of run
 
+
+run)
+  mkdir -p /var/run/frr/${OSPFD_CONFIG}
+  chown frr:frr /var/run/frr/${OSPFD_CONFIG}
+
+  routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
+#  routers="RT1 RT2"
+
+  for rt in $routers
+  do
+    ip netns exec ${rt} ${ZEBRA} -d \
+      -f /etc/frr/${OSPFD_CONFIG}/${rt}_zebra.conf \
+      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.pid \
+      -A 127.0.0.1 \
+      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty
+    
+    ip netns exec ${rt} ${OSPFD} -d \
+      -f /etc/frr/${OSPFD_CONFIG}/${rt}_ospfd.conf \
+      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_ospfd.pid \
+      -A 127.0.0.1 \
+      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty
+    echo "Zebra OSPF Up for Router instance ${rt} \n"
+  done
+  ;; #End of run
+
+stop)
+    pkill -feU frr
+  ;;
+
 delete)
-  pkill -u frr 
-  pkill -u frr 
+
+   pkill -feU frr
 
   for ns in $routers
   do
@@ -135,21 +164,27 @@ delete)
   ;;
 show)
   ip netns list
-  ps -ef | grep frr
+  ps -fU  frr
   ;; #End of show
 test)
     echo "Sending 5 ICMP"
-  ip netns exec RT4 ping 12.0.0.3 -c 2
+  ip netns exec RT4 ping 12.0.0.3 -c 1
     echo "Sending 5 ICMP"
-  ip netns exec RT7 ping 12.0.0.3 -c 2
+  ip netns exec RT7 ping 12.0.0.3 -c 1
     echo "Sending 5 ICMP"
-  ip netns exec RT8 ping 192.168.1.254 -c 2
+  ip netns exec RT8 ping 192.168.1.254 -c 1
     echo "Sending 5 ICMP"
-  ip netns exec RT5 ping 192.168.4.254 -c 2
+  ip netns exec RT5 ping 192.168.4.254 -c 1
     echo "Sending 5 ICMP"
-  ip netns exec RT4 ping 192.168.4.254 -c 2
+  ip netns exec RT4 ping 192.168.4.254 -c 1
     echo "Sending 5 ICMP"
-  ip netns exec RT5 ping 12.0.0.3 -c 2
+  ip netns exec RT5 ping 12.0.0.3 -c 1
+    
+  echo "traceroute 12.0.0.3"
+  ip netns exec RT4 traceroute 12.0.0.3
+  echo "traceroute 192.168.4.254"
+  ip netns exec RT5 traceroute 192.168.4.254
+
   ;; #End of test
 *)
   echo "usage $0 [create|run|delete|show|test]"
