@@ -60,6 +60,8 @@ create)
   ip link set RT3_to_RT22 netns RT3 up
   #Redundancy link up end
 
+  # IP assign on Specific Router's Interfaces to simulate passive cli 
+  ip netns exec RT1 ip addr add 1.1.1.1/24 dev RT1_to_RT2
   # IP assign on Specific Router's Interfaces
   ip netns exec RT1 ip addr add 172.16.13.1/24 dev RT1_to_RT2
   ip netns exec RT1 ip addr add 192.168.4.1/24 dev RT1_to_RT7
@@ -99,6 +101,9 @@ create)
 run)
   mkdir -p /var/run/frr/${OSPFD_CONFIG}
   chown frr:frr /var/run/frr/${OSPFD_CONFIG}
+
+  routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
+#  routers="RT1 RT2"
 
   for rt in $routers
   do
