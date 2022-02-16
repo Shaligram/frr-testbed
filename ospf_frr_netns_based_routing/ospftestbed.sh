@@ -1,4 +1,5 @@
 #!/bin/sh
+#set -x
 
 ZEBRA=/usr/lib/frr/zebra
 OSPFD=/usr/lib/frr/ospfd
@@ -95,6 +96,19 @@ create)
       ip netns exec ${rt} ip addr add 127.0.0.1/8 dev lo
       ip netns exec ${rt} ip link set lo up
   done
+ 
+  # below support for pinging from VM directly  
+  #config for RT4 to OUT 
+  ip link add RT4_to_OUT type veth peer name OUT_to_RT4
+  ip link set RT4_to_OUT netns RT4 up
+  ip netns exec RT4 ip addr add 192.177.164.254/24 dev RT4_to_OUT
+
+  #config for OUT to RT4
+  ip link set OUT_to_RT4 up
+  ip addr add 192.177.164.1/24 dev OUT_to_RT4
+  ip route add 12.0.0.0/24 via 192.177.164.254 dev OUT_to_RT4
+
+
   
   ;; #End of create router
 
@@ -156,6 +170,7 @@ delete)
 
    pkill -feU frr
 
+  ip link del OUT_to_RT4
   for ns in $routers
   do
     ip netns delete ${ns}
@@ -184,6 +199,11 @@ test)
   ip netns exec RT4 traceroute 12.0.0.3
   echo "traceroute 192.168.4.254"
   ip netns exec RT5 traceroute 192.168.4.254
+  
+  echo "traceroute 12.0.0.3 from VM directly"
+  traceroute 12.0.0.3
+  echo "Sending 5 ICMP to RT8 12.0.0.8 DIRECTLY-----"
+  ping 12.0.0.3 -c 1
 
   ;; #End of test
 *)
