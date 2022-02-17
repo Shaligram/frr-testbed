@@ -106,7 +106,8 @@ create)
   #config for OUT to RT4
   ip link set OUT_to_RT4 up
   ip addr add 192.177.164.1/24 dev OUT_to_RT4
-  ip route add 12.0.0.0/24 via 192.177.164.254 dev OUT_to_RT4
+# below route will be dynamically learned via OSPF  
+#  ip route add 12.0.0.0/24 via 192.177.164.254 dev OUT_to_RT4
 
 
   
@@ -115,6 +116,8 @@ create)
 runstdlog)
   mkdir -p /var/run/frr/${OSPFD_CONFIG}
   chown frr:frr /var/run/frr/${OSPFD_CONFIG}
+  
+  systemctl restart frr
 
   routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
 #  routers="RT1 RT2"
@@ -145,6 +148,8 @@ run)
   routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
 #  routers="RT1 RT2"
 
+  systemctl restart frr
+
   for rt in $routers
   do
     ip netns exec ${rt} ${ZEBRA} -d \
@@ -164,6 +169,7 @@ run)
 
 stop)
     pkill -feU frr
+    systemctl stop frr
   ;;
 
 delete)
@@ -207,8 +213,15 @@ test)
 
   ;; #End of test
 *)
-  echo "usage $0 [create|run|delete|show|test]"
+  echo "Information - /etc/daemons options needs to be updated as below for data transfer from VM to Namespace instance
+zebra_options="  -A 127.0.0.1 -s 90000000 -f /etc/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.conf -z /var/run/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.vty"
+ospfd_options="  -A 127.0.0.1 -f /etc/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_ospfd.conf -z /var/run/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.vty"
+"
+  echo "usage $0 [create|run|delete|show|test]\n"
   ;;
 esac
+
+
+
 
 
