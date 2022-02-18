@@ -1,14 +1,86 @@
 #!/bin/sh
+# So much of effort to run something which is running everywhere aroung us"
+# Good to feel it runs now on single VM  
+
+ 
 #set -x
 
 ZEBRA=/usr/lib/frr/zebra
 OSPFD=/usr/lib/frr/ospfd
-OSPFD_CONFIG=/ospf-frr/ospf_frr_netns_based_routing
+LDPD=/usr/lib/frr/ldpd
+CONFIG=/ospf-frr/ospf_frr_netns_based_routing
 
-routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
+ENABLE_SOURCE_VM_TO_NS_PING=1
+
+routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
+#routers="RT1 RT2 RT3"
+  
+run_routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
+#run_routers="RT1 RT2 RT3"
+
+
+run_frr_daemons () {
+    if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
+    then 
+        systemctl restart frr
+    fi
+
+    for rt in $run_routers
+    do
+        if [ $1 -eq 1 ] 
+        then
+            ip netns exec ${rt} ${ZEBRA} -d \
+                -f /etc/frr/${CONFIG}/${rt}_zebra.conf \
+                -i /var/run/frr/${CONFIG}/${rt}_zebra.pid \
+                -A 127.0.0.1 \
+                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty --log stdout
+
+            ip netns exec ${rt} ${OSPFD} -d \
+                -f /etc/frr/${CONFIG}/${rt}_ospfd.conf \
+                -i /var/run/frr/${CONFIG}/${rt}_ospfd.pid \
+                -A 127.0.0.1 \
+                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty --log stdout
+
+            ip netns exec ${rt} ${LDPD} -d \
+                -f /etc/frr/${CONFIG}/${rt}_ldpd.conf \
+                -i /var/run/frr/${CONFIG}/${rt}_ldpd.pid \
+                -A 127.0.0.1 \
+                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty --log stdout
+            echo "Zebra OSPF/LDP Up for Router instance ${rt} \n"
+                
+            sleep 2;
+
+            else
+                ip netns exec ${rt} ${ZEBRA} -d \
+                    -f /etc/frr/${CONFIG}/${rt}_zebra.conf \
+                    -i /var/run/frr/${CONFIG}/${rt}_zebra.pid \
+                    -A 127.0.0.1 \
+                    -z /var/run/frr/${CONFIG}/${rt}_zebra.vty
+
+                ip netns exec ${rt} ${OSPFD} -d \
+                    -f /etc/frr/${CONFIG}/${rt}_ospfd.conf \
+                    -i /var/run/frr/${CONFIG}/${rt}_ospfd.pid \
+                    -A 127.0.0.1 \
+                    -z /var/run/frr/${CONFIG}/${rt}_zebra.vty
+
+                ip netns exec ${rt} ${LDPD} -d \
+                    -f /etc/frr/${CONFIG}/${rt}_ldpd.conf \
+                    -i /var/run/frr/${CONFIG}/${rt}_ldpd.pid \
+                    -A 127.0.0.1 \
+                    -z /var/run/frr/${CONFIG}/${rt}_zebra.vty
+            echo "Zebra OSPF/LDP Up for Router instance ${rt} \n"
+        fi
+    done
+}
 
 case "$1" in
 create)
+
+    mkdir -p /var/run/frr/${CONFIG}
+    chown frr:frr /var/run/frr/${CONFIG}
+    modprobe mpls_router
+    modprobe mpls_iptunnel
+    modprobe mpls_gso
 
   # create router(8)
   for ns in $routers
@@ -60,6 +132,18 @@ create)
   
   ip link set RT3_to_RT22 netns RT3 up
   #Redundancy link up end
+  
+ # MPLS Specific Config - Important for enabling MPLS processing 
+  ip netns exec RT1  sysctl -w net.mpls.conf.RT1_to_RT2.input=1
+  ip netns exec RT1 sysctl -w net.mpls.platform_labels=65535
+  
+  ip netns exec RT2 sysctl -w net.mpls.conf.RT2_to_RT1.input=1
+  ip netns exec RT2 sysctl -w net.mpls.conf.RT2_to_RT3.input=1
+  ip netns exec RT2 sysctl -w net.mpls.platform_labels=65535
+  
+  ip netns exec RT3 sysctl -w net.mpls.conf.RT3_to_RT2.input=1
+  ip netns exec RT3 sysctl -w net.mpls.platform_labels=65535
+  # MPLS Specific Config
 
   # IP assign on Specific Router's Interfaces to simulate passive cli 
   ip netns exec RT1 ip addr add 1.1.1.1/24 dev RT1_to_RT2
@@ -95,6 +179,11 @@ create)
   do
       ip netns exec ${rt} ip addr add 127.0.0.1/8 dev lo
       ip netns exec ${rt} ip link set lo up
+      
+#      ip_suffix=`expr "$rt" : "RT\(.*\)$suffix"`
+#      ip netns exec ${rt} ip link add dummy0 type dummy
+#      ip netns exec ${rt} ip addr add 10.0.0.$ip_suffix/24 dev dummy0
+#      ip netns exec ${rt} ip link set dummy0 up
   done
  
   # below support for pinging from VM directly  
@@ -114,67 +203,31 @@ create)
   ;; #End of create router
 
 runstdlog)
-  mkdir -p /var/run/frr/${OSPFD_CONFIG}
-  chown frr:frr /var/run/frr/${OSPFD_CONFIG}
-  
-  systemctl restart frr
 
-  routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
-#  routers="RT1 RT2"
-
-  for rt in $routers
-  do
-    ip netns exec ${rt} ${ZEBRA} -d \
-      -f /etc/frr/${OSPFD_CONFIG}/${rt}_zebra.conf \
-      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.pid \
-      -A 127.0.0.1 \
-      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty --log stdout
-
-    ip netns exec ${rt} ${OSPFD} -d \
-      -f /etc/frr/${OSPFD_CONFIG}/${rt}_ospfd.conf \
-      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_ospfd.pid \
-      -A 127.0.0.1 \
-      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty --log stdout
-    echo "Zebra OSPF Up for Router instance ${rt} \n"
-    sleep 5
-  done
+    run_frr_daemons 1
   ;; #End of run
 
 
 run)
-  mkdir -p /var/run/frr/${OSPFD_CONFIG}
-  chown frr:frr /var/run/frr/${OSPFD_CONFIG}
-
-  routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8 RT22"
-#  routers="RT1 RT2"
-
-  systemctl restart frr
-
-  for rt in $routers
-  do
-    ip netns exec ${rt} ${ZEBRA} -d \
-      -f /etc/frr/${OSPFD_CONFIG}/${rt}_zebra.conf \
-      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.pid \
-      -A 127.0.0.1 \
-      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty
     
-    ip netns exec ${rt} ${OSPFD} -d \
-      -f /etc/frr/${OSPFD_CONFIG}/${rt}_ospfd.conf \
-      -i /var/run/frr/${OSPFD_CONFIG}/${rt}_ospfd.pid \
-      -A 127.0.0.1 \
-      -z /var/run/frr/${OSPFD_CONFIG}/${rt}_zebra.vty
-    echo "Zebra OSPF Up for Router instance ${rt} \n"
-  done
+    run_frr_daemons 0
   ;; #End of run
 
 stop)
     pkill -feU frr
-    systemctl stop frr
+    if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
+    then 
+        systemctl stop frr 
+    fi
   ;;
 
 delete)
 
    pkill -feU frr
+   if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
+   then 
+       systemctl stop frr 
+   fi
 
   ip link del OUT_to_RT4
   for ns in $routers
@@ -206,10 +259,13 @@ test)
   echo "traceroute 192.168.4.254"
   ip netns exec RT5 traceroute 192.168.4.254
   
-  echo "traceroute 12.0.0.3 from VM directly"
-  traceroute 12.0.0.3
-  echo "Sending 5 ICMP to RT8 12.0.0.8 DIRECTLY-----"
-  ping 12.0.0.3 -c 1
+  if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ] 
+  then
+      echo "traceroute 12.0.0.3 from VM directly"
+      traceroute 12.0.0.3
+      echo "Sending 5 ICMP to RT8 12.0.0.8 DIRECTLY-----"
+      ping 12.0.0.3 -c 1
+  fi
 
   ;; #End of test
 *)

@@ -3,11 +3,14 @@
 #Usage -./vtysh.cli R1 1 "show ip route"
 lassign $argv arg1 arg2 arg3
 log_user 0
+#arg3 is cli to fire 
 
-if {$arg2 == 1} {
-    spawn ip netns exec $arg1 telnet localhost 2601;
+if {$arg1 == 0} {
+    spawn telnet localhost 2601;
+} elseif {$arg1 == 2} {
+    spawn telnet localhost 2612;
 } else {
-    spawn ip netns exec $arg1 telnet localhost 2604;
+    spawn telnet localhost 2604;
 }
 expect "*?assword:*"
 send -- "zebra\r"
@@ -24,7 +27,7 @@ expect {
 #send -- "$arg3\r"
 
 
-if { 0 } {
+if { $arg2 == 1 } {
     interact
 } else {
     expect ">"
