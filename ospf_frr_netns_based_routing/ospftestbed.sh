@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # So much of effort to run something which is running everywhere aroung us"
 # Good to feel it runs now on single VM  
 
@@ -12,64 +12,60 @@ CONFIG=/ospf-frr/ospf_frr_netns_based_routing
 
 ENABLE_SOURCE_VM_TO_NS_PING=1
 
-routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
-#routers="RT1 RT2 RT3"
-  
+routers_instance="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
+#routers_instance="RT1 RT2 RT3"
 run_routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
-#run_routers="RT1 RT2 RT3"
+run_ldprouters="RT1 RT2 RT3"
 
-
+#/* Arguments are - $1=enable_loggin, $2=enable_ospf $3=enable_ldpd */
 run_frr_daemons () {
-    if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
+
+    enable_loggin=$1
+    enable_zebra=$2
+    enable_ospf=$3
+    enable_ldpd=$4
+    echo -e "\n"
+
+    if [ $ENABLE_SOURCE_VM_TO_NS_PING -eq 1 ]
     then 
         systemctl restart frr
     fi
 
     for rt in $run_routers
     do
-        if [ $1 -eq 1 ] 
+        if [ $enable_zebra -eq 1 ]
         then
             ip netns exec ${rt} ${ZEBRA} -d \
                 -f /etc/frr/${CONFIG}/${rt}_zebra.conf \
                 -i /var/run/frr/${CONFIG}/${rt}_zebra.pid \
                 -A 127.0.0.1 \
-                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty --log stdout
+                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty $enable_loggin
 
+            echo "${rt}: FRR ZEBRA Up for Router instance"
+        fi
+
+        if [ $enable_ospf -eq 1 ] 
+        then
             ip netns exec ${rt} ${OSPFD} -d \
                 -f /etc/frr/${CONFIG}/${rt}_ospfd.conf \
                 -i /var/run/frr/${CONFIG}/${rt}_ospfd.pid \
                 -A 127.0.0.1 \
-                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty --log stdout
+                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty $enable_loggin
 
+            echo "${rt}: FRR OSPF Up for Router instance"
+        fi
+
+        if [ $enable_ldpd -eq 1 ] && [[ " ${run_ldprouters[*]} " =~ " ${rt} " ]];
+        then
             ip netns exec ${rt} ${LDPD} -d \
                 -f /etc/frr/${CONFIG}/${rt}_ldpd.conf \
                 -i /var/run/frr/${CONFIG}/${rt}_ldpd.pid \
                 -A 127.0.0.1 \
-                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty --log stdout
-            echo "Zebra OSPF/LDP Up for Router instance ${rt} \n"
-                
-            sleep 2;
+                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty $enable_loggin
 
-            else
-                ip netns exec ${rt} ${ZEBRA} -d \
-                    -f /etc/frr/${CONFIG}/${rt}_zebra.conf \
-                    -i /var/run/frr/${CONFIG}/${rt}_zebra.pid \
-                    -A 127.0.0.1 \
-                    -z /var/run/frr/${CONFIG}/${rt}_zebra.vty
-
-                ip netns exec ${rt} ${OSPFD} -d \
-                    -f /etc/frr/${CONFIG}/${rt}_ospfd.conf \
-                    -i /var/run/frr/${CONFIG}/${rt}_ospfd.pid \
-                    -A 127.0.0.1 \
-                    -z /var/run/frr/${CONFIG}/${rt}_zebra.vty
-
-                ip netns exec ${rt} ${LDPD} -d \
-                    -f /etc/frr/${CONFIG}/${rt}_ldpd.conf \
-                    -i /var/run/frr/${CONFIG}/${rt}_ldpd.pid \
-                    -A 127.0.0.1 \
-                    -z /var/run/frr/${CONFIG}/${rt}_zebra.vty
-            echo "Zebra OSPF/LDP Up for Router instance ${rt} \n"
+            echo "${rt}: FRR LDP Up for Router instance"
         fi
+        #       sleep 2;
     done
 }
 
@@ -83,7 +79,7 @@ create)
     modprobe mpls_gso
 
   # create router(8)
-  for ns in $routers
+  for ns in $routers_instance
   do
     ip netns add ${ns}
   done
@@ -175,7 +171,7 @@ create)
   # Redundancy IP assign on Specific Router's Interfaces ends
 
   # local link up for local routing
-  for rt in $routers
+  for rt in $routers_instance
   do
       ip netns exec ${rt} ip addr add 127.0.0.1/8 dev lo
       ip netns exec ${rt} ip link set lo up
@@ -203,14 +199,21 @@ create)
   ;; #End of create router
 
 runstdlog)
-
-    run_frr_daemons 1
+    run_frr_daemons "--log=stdout" 1 1 1
   ;; #End of run
 
 
 run)
-    
-    run_frr_daemons 0
+    run_frr_daemons "" 1 1 1
+  ;; #End of run
+
+
+runospf)
+    run_frr_daemons "" 1 1 0 
+  ;; #End of run
+
+runmpls)
+    run_frr_daemons "" 0 0 1
   ;; #End of run
 
 stop)
@@ -230,7 +233,7 @@ delete)
    fi
 
   ip link del OUT_to_RT4
-  for ns in $routers
+  for ns in $routers_instance
   do
     ip netns delete ${ns}
   done
@@ -241,29 +244,29 @@ show)
   ps -fU  frr
   ;; #End of show
 test)
-    echo "Sending 5 ICMP"
+    echo -e "\nSending 5 ICMP"
   ip netns exec RT4 ping 12.0.0.3 -c 1
-    echo "Sending 5 ICMP"
+    echo -e "\nSending 5 ICMP"
   ip netns exec RT7 ping 12.0.0.3 -c 1
-    echo "Sending 5 ICMP"
+    echo -e "\nSending 5 ICMP"
   ip netns exec RT8 ping 192.168.1.254 -c 1
-    echo "Sending 5 ICMP"
+    echo -e "\nSending 5 ICMP"
   ip netns exec RT5 ping 192.168.4.254 -c 1
-    echo "Sending 5 ICMP"
+    echo -e "\nSending 5 ICMP"
   ip netns exec RT4 ping 192.168.4.254 -c 1
-    echo "Sending 5 ICMP"
+    echo -e "\nSending 5 ICMP"
   ip netns exec RT5 ping 12.0.0.3 -c 1
     
-  echo "traceroute 12.0.0.3"
+  echo -e "\ntraceroute 12.0.0.3"
   ip netns exec RT4 traceroute 12.0.0.3
-  echo "traceroute 192.168.4.254"
+  echo -e "\ntraceroute 192.168.4.254"
   ip netns exec RT5 traceroute 192.168.4.254
   
   if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ] 
   then
-      echo "traceroute 12.0.0.3 from VM directly"
+      echo -e "\ntraceroute 12.0.0.3 from VM directly"
       traceroute 12.0.0.3
-      echo "Sending 5 ICMP to RT8 12.0.0.8 DIRECTLY-----"
+      echo -e "\nSending 5 ICMP to RT8 12.0.0.8 DIRECTLY-----"
       ping 12.0.0.3 -c 1
   fi
 
@@ -273,7 +276,7 @@ test)
 zebra_options="  -A 127.0.0.1 -s 90000000 -f /etc/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.conf -z /var/run/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.vty"
 ospfd_options="  -A 127.0.0.1 -f /etc/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_ospfd.conf -z /var/run/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.vty"
 "
-  echo "usage $0 [create|run|delete|show|test]\n"
+  echo "usage $0 [create|run|delete|show|test|runstdlog|runospf|runmpls]\n"
   ;;
 esac
 
