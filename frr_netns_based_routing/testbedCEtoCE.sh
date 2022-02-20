@@ -8,7 +8,8 @@
 ZEBRA=/usr/lib/frr/zebra
 OSPFD=/usr/lib/frr/ospfd
 LDPD=/usr/lib/frr/ldpd
-CONFIG=/ospf-frr/ospf_frr_netns_based_routing
+CONFIG=`pwd`
+VAR_PATH=`basename $CONFIG`
 
 ENABLE_SOURCE_VM_TO_NS_PING=1
 
@@ -24,7 +25,6 @@ run_frr_daemons () {
     enable_zebra=$2
     enable_ospf=$3
     enable_ldpd=$4
-    echo -e "\n"
 
     if [ $ENABLE_SOURCE_VM_TO_NS_PING -eq 1 ]
     then 
@@ -33,13 +33,14 @@ run_frr_daemons () {
 
     for rt in $run_routers
     do
+        echo -e "----------------------------------------\n"
         if [ $enable_zebra -eq 1 ]
         then
             ip netns exec ${rt} ${ZEBRA} -d \
-                -f /etc/frr/${CONFIG}/${rt}_zebra.conf \
-                -i /var/run/frr/${CONFIG}/${rt}_zebra.pid \
+                -f ${CONFIG}/${rt}_zebra.conf \
                 -A 127.0.0.1 \
-                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty $enable_loggin
+                -i /var/run/frr/${VAR_PATH}/${rt}_zebra.pid \
+                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin
 
             echo "${rt}: FRR ZEBRA Up for Router instance"
         fi
@@ -47,10 +48,10 @@ run_frr_daemons () {
         if [ $enable_ospf -eq 1 ] 
         then
             ip netns exec ${rt} ${OSPFD} -d \
-                -f /etc/frr/${CONFIG}/${rt}_ospfd.conf \
-                -i /var/run/frr/${CONFIG}/${rt}_ospfd.pid \
+                -f ${CONFIG}/${rt}_ospfd.conf \
                 -A 127.0.0.1 \
-                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty $enable_loggin
+                -i /var/run/frr/${VAR_PATH}/${rt}_ospfd.pid \
+                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin
 
             echo "${rt}: FRR OSPF Up for Router instance"
         fi
@@ -58,22 +59,41 @@ run_frr_daemons () {
         if [ $enable_ldpd -eq 1 ] && [[ " ${run_ldprouters[*]} " =~ " ${rt} " ]];
         then
             ip netns exec ${rt} ${LDPD} -d \
-                -f /etc/frr/${CONFIG}/${rt}_ldpd.conf \
-                -i /var/run/frr/${CONFIG}/${rt}_ldpd.pid \
+                -f ${CONFIG}/${rt}_ldpd.conf \
                 -A 127.0.0.1 \
-                -z /var/run/frr/${CONFIG}/${rt}_zebra.vty $enable_loggin
+                -i /var/run/frr/${VAR_PATH}/${rt}_ldpd.pid \
+                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin
 
             echo "${rt}: FRR LDP Up for Router instance"
         fi
-        #       sleep 2;
+        sleep 1;
     done
 }
 
 case "$1" in
 create)
 
-    mkdir -p /var/run/frr/${CONFIG}
-    chown frr:frr /var/run/frr/${CONFIG}
+    echo "CONFIG PATH  $CONFIG"
+    echo "VAR_PATH  /var/run/frr/$VAR_PATH"
+    echo "Going to kill all frr processes "
+
+    cat /etc/frr/daemons  | grep $VAR_PATH 
+    if [ $? -eq 1 ] && [ $ENABLE_SOURCE_VM_TO_NS_PING -eq 1 ];
+    then 
+        cp /etc/frr/daemons /etc/frr/daemons.$VAR_PATH.orig
+        echo "/etc/frr/daemons options modified "
+        echo "zebra_options=\"-A 127.0.0.1 -s 90000000 -f $CONFIG/OUT_zebra.conf -z /var/run/frr/$VAR_PATH/OUT_zebra.vty\"" >> /etc/frr/daemons
+        echo "ospfd_options=\"-A 127.0.0.1 -f $CONFIG/OUT_ospfd.conf -z /var/run/frr/$VAR_PATH/OUT_zebra.vty\"" >> /etc/frr/daemons
+    fi
+
+    pkill -feU frr
+    if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
+    then 
+        systemctl stop frr 
+    fi
+    sleep 2
+    mkdir -p /var/run/frr/${VAR_PATH}
+    chown frr:frr /var/run/frr/${VAR_PATH}
     modprobe mpls_router
     modprobe mpls_iptunnel
     modprobe mpls_gso
@@ -230,6 +250,7 @@ delete)
    if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
    then 
        systemctl stop frr 
+       cp /etc/frr/daemons.$VAR_PATH.orig /etc/frr/daemons 
    fi
 
   ip link del OUT_to_RT4
@@ -241,7 +262,8 @@ delete)
   ;;
 show)
   ip netns list
-  ps -fU  frr
+  ps -fU frr -o ppid,pid,cmd
+  ps -ef | grep watchfrr
   ;; #End of show
 test)
     echo -e "\nSending 5 ICMP"
@@ -273,10 +295,10 @@ test)
   ;; #End of test
 *)
   echo "Information - /etc/daemons options needs to be updated as below for data transfer from VM to Namespace instance
-zebra_options="  -A 127.0.0.1 -s 90000000 -f /etc/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.conf -z /var/run/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.vty"
-ospfd_options="  -A 127.0.0.1 -f /etc/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_ospfd.conf -z /var/run/frr/ospf-frr/ospf_frr_netns_based_routing/OUT_zebra.vty"
+zebra_options="  -A 127.0.0.1 -s 90000000 -f /etc/frr/$CONFIG/OUT_zebra.conf -z /var/run/frr/$VAR_PATH/OUT_zebra.vty"
+ospfd_options="  -A 127.0.0.1 -f /etc/frr/$CONFIG/OUT_ospfd.conf -z /var/run/frr/$VAR_PATH/OUT_zebra.vty"
 "
-  echo "usage $0 [create|run|delete|show|test|runstdlog|runospf|runmpls]\n"
+  echo -e "usage $0 [create|run|delete|show|test|runstdlog|runospf|runmpls]\n"
   ;;
 esac
 
