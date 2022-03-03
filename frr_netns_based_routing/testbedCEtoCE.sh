@@ -203,6 +203,8 @@ create)
   done
  
   # below support for pinging from VM directly  
+  if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
+  then 
   #config for RT4 to OUT 
   ip link add RT4_to_OUT type veth peer name OUT_to_RT4
   ip link set RT4_to_OUT netns RT4 up
@@ -211,6 +213,7 @@ create)
   #config for OUT to RT4
   ip link set OUT_to_RT4 up
   ip addr add 192.177.164.1/24 dev OUT_to_RT4
+  fi
 # below route will be dynamically learned via OSPF  
 #  ip route add 12.0.0.0/24 via 192.177.164.254 dev OUT_to_RT4
 
@@ -247,6 +250,8 @@ stop)
 delete)
 
    pkill -feU frr
+   pkill -f "/bin/bash --rcfile"
+
    if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
    then 
        systemctl stop frr 
