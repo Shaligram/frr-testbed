@@ -8,15 +8,17 @@
 ZEBRA=/usr/lib/frr/zebra
 OSPFD=/usr/lib/frr/ospfd
 LDPD=/usr/lib/frr/ldpd
+BGPD=/usr/lib/frr/bgpd
 CONFIG=`pwd`
 VAR_PATH=`basename $CONFIG`
 
-ENABLE_SOURCE_VM_TO_NS_PING=1
+ENABLE_SOURCE_VM_TO_NS_PING=0
 
-routers_instance="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
+routers_instance="RT1 RT2 RT3 RT4 RT5"
 #routers_instance="RT1 RT2 RT3"
-run_routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
+run_routers="RT1 RT2 RT3 RT4 RT5"
 run_ldprouters="RT1 RT2 RT3"
+run_bgprouters="RT1 RT3"
 
 #/* Arguments are - $1=enable_loggin, $2=enable_ospf $3=enable_ldpd */
 run_frr_daemons () {
@@ -51,20 +53,31 @@ run_frr_daemons () {
                 -f ${CONFIG}/${rt}_ospfd.conf \
                 -A 127.0.0.1 \
                 -i /var/run/frr/${VAR_PATH}/${rt}_ospfd.pid \
-                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin
+                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin 
 
             echo "${rt}: FRR OSPF Up for Router instance"
         fi
 
         if [ $enable_ldpd -eq 1 ] && [[ " ${run_ldprouters[*]} " =~ " ${rt} " ]];
         then
-            ip netns exec ${rt} ${LDPD} -d \
+           sleep 20 &&  ip netns exec ${rt} ${LDPD} -d \
                 -f ${CONFIG}/${rt}_ldpd.conf \
                 -A 127.0.0.1 \
                 -i /var/run/frr/${VAR_PATH}/${rt}_ldpd.pid \
-                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin
+                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin &
 
             echo "${rt}: FRR LDP Up for Router instance"
+        fi
+        
+        if [[ " ${run_bgprouters[*]} " =~ " ${rt} " ]];
+        then
+            ip netns exec ${rt} ${BGPD} -d \
+                -f ${CONFIG}/${rt}_bgpd.conf \
+                -A 127.0.0.1 \
+                -i /var/run/frr/${VAR_PATH}/${rt}_bgpd.pid \
+                -z /var/run/frr/${VAR_PATH}/${rt}_zebra.vty $enable_loggin
+
+            echo "${rt}: FRR BGP Up for Router instance"
         fi
         sleep 1;
     done
@@ -76,6 +89,7 @@ create)
     echo "CONFIG PATH  $CONFIG"
     echo "VAR_PATH  /var/run/frr/$VAR_PATH"
     echo "Going to kill all frr processes "
+    systemctl stop frr 
 
     cat /etc/frr/daemons  | grep $VAR_PATH 
     if [ $? -eq 1 ] && [ $ENABLE_SOURCE_VM_TO_NS_PING -eq 1 ];
@@ -149,6 +163,17 @@ create)
   ip link set RT3_to_RT22 netns RT3 up
   #Redundancy link up end
   
+  # Vrf Configuration for handling RT4 traffic
+
+  ip netns exec RT1 ip link add RED type vrf table 1
+  ip netns exec RT1 ip link set dev RT1_to_RT4 master RED
+  ip netns exec RT1 ip link set dev RED up
+  
+  ip netns exec RT3 ip link add RED type vrf table 1
+  ip netns exec RT3 ip link set dev RT3_to_RT5 master RED
+  ip netns exec RT3 ip link set dev RED up
+  # Vrf Configuration for handling RT4 traffic end
+  
  # MPLS Specific Config - Important for enabling MPLS processing 
   ip netns exec RT1  sysctl -w net.mpls.conf.RT1_to_RT2.input=1
   ip netns exec RT1 sysctl -w net.mpls.platform_labels=65535
@@ -161,46 +186,6 @@ create)
   ip netns exec RT3 sysctl -w net.mpls.platform_labels=65535
   # MPLS Specific Config
 
-  # IP assign on Specific Router's Interfaces to simulate passive cli 
-  ip netns exec RT1 ip addr add 1.1.1.1/24 dev RT1_to_RT2
-  # IP assign on Specific Router's Interfaces
-  ip netns exec RT1 ip addr add 172.16.13.1/24 dev RT1_to_RT2
-  ip netns exec RT1 ip addr add 192.168.4.1/24 dev RT1_to_RT7
-  ip netns exec RT1 ip addr add 192.168.1.1/24 dev RT1_to_RT4
-  
-  ip netns exec RT3 ip addr add 172.19.13.1/24 dev RT3_to_RT2
-  ip netns exec RT3 ip addr add 192.168.2.1/24 dev RT3_to_RT5
-  ip netns exec RT3 ip addr add 192.168.3.1/24 dev RT3_to_RT6
-
-  ip netns exec RT2 ip addr add 172.16.13.3/24 dev RT2_to_RT1
-  ip netns exec RT2 ip addr add 172.19.13.3/24 dev RT2_to_RT3
-
-  ip netns exec RT4 ip addr add 192.168.1.254/24 dev RT4_to_RT1
-  ip netns exec RT5 ip addr add 192.168.2.254/24 dev RT5_to_RT3
-  ip netns exec RT6 ip addr add 192.168.3.254/24 dev RT6_to_RT3
-  ip netns exec RT6 ip addr add 12.0.0.1/24 dev RT6_to_RT8
-  ip netns exec RT7 ip addr add 192.168.4.254/24 dev RT7_to_RT1
-
-  ip netns exec RT8 ip addr add 12.0.0.3/24 dev RT8_to_RT6
-
-  # Redundancy IP assign on Specific Router's Interfaces
-  ip netns exec RT1 ip addr add 172.17.13.1/24 dev RT1_to_RT22
-  ip netns exec RT3 ip addr add 172.18.13.1/24 dev RT3_to_RT22
-  ip netns exec RT22 ip addr add 172.17.13.3/24 dev RT22_to_RT1
-  ip netns exec RT22 ip addr add 172.18.13.3/24 dev RT22_to_RT3
-  # Redundancy IP assign on Specific Router's Interfaces ends
-
-  # local link up for local routing
-  for rt in $routers_instance
-  do
-      ip netns exec ${rt} ip addr add 127.0.0.1/8 dev lo
-      ip netns exec ${rt} ip link set lo up
-      
-#      ip_suffix=`expr "$rt" : "RT\(.*\)$suffix"`
-#      ip netns exec ${rt} ip link add dummy0 type dummy
-#      ip netns exec ${rt} ip addr add 10.0.0.$ip_suffix/24 dev dummy0
-#      ip netns exec ${rt} ip link set dummy0 up
-  done
  
   # below support for pinging from VM directly  
   if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ]
@@ -268,26 +253,30 @@ delete)
 show)
   ip netns list
   ps -fU frr -o ppid,pid,cmd
-  ps -ef | grep watchfrr
+  ps -ef | grep watchfrr | grep -v gre
   ;; #End of show
 test)
-    echo -e "\nSending 5 ICMP RT4"
-  ip netns exec RT4 ping 12.0.0.3 -c 1
-    echo -e "\nSending 5 ICMP RT7"
-  ip netns exec RT7 ping 12.0.0.3 -c 1
-    echo -e "\nSending 5 ICMP RT8"
-  ip netns exec RT8 ping 192.168.1.254 -c 1
-    echo -e "\nSending 5 ICMP RT5"
-  ip netns exec RT5 ping 192.168.4.254 -c 1
-    echo -e "\nSending 5 ICMP RT4"
-  ip netns exec RT4 ping 192.168.4.254 -c 1
-    echo -e "\nSending 5 ICMP RT5"
-  ip netns exec RT5 ping 12.0.0.3 -c 1
     
-  echo -e "\ntraceroute 12.0.0.3 RT4"
-  ip netns exec RT4 traceroute 12.0.0.3
-  echo -e "\ntraceroute 192.168.4.254 RT5"
-  ip netns exec RT5 traceroute 192.168.4.254
+    echo -e "\nSending 5 ICMP RT4 to RT5 VRF RED"
+    ip netns exec RT4 ping 6.6.6.6 -c 1
+    echo -e "\nSending 5 ICMP RT5 to RT4 VRF RED"
+    ip netns exec RT5 ping 4.4.4.4 -c 1
+
+    echo -e "\ntraceroute 6.6.6.6 from RT4"
+    ip netns exec RT4 traceroute -e 6.6.6.6
+    echo -e "\ntraceroute 4.4.4.4 from RT5"
+    ip netns exec RT5 traceroute -e 4.4.4.4
+    
+    
+    echo -e "\nSending 5 ICMP RT4 to RT5 VRF RED"
+    ip netns exec RT4 ping 192.168.2.4 -c 1
+    echo -e "\nSending 5 ICMP RT5 to RT4 VRF RED"
+    ip netns exec RT5 ping 192.168.1.4 -c 1
+
+    echo -e "\ntraceroute 192.168.2.4 from RT4"
+    ip netns exec RT4 traceroute -e 192.168.2.4
+    echo -e "\ntraceroute 192.168.1.4 from RT5"
+    ip netns exec RT5 traceroute -e 192.168.1.4
   
   if [ $ENABLE_SOURCE_VM_TO_NS_PING  -eq  1 ] 
   then

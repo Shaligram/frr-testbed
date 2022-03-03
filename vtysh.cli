@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+#Usage -./vtysh.cli R1 0 "show ip ospf database"
+#Usage -./vtysh.cli R1 1 "show ip route"
+lassign $argv arg1 arg2 arg3
+log_user 0
+#arg3 is cli to fire 
+
+if {$arg2 == "z"} {
+    puts "zebra"
+    spawn telnet localhost 2601;
+} elseif {$arg2 == "l"} {
+    puts "ldp"
+    spawn telnet localhost 2612;
+} elseif {$arg2 == "b"} {
+    puts "bgp"
+    spawn telnet localhost 2605;
+} elseif {$arg2 == "o"} {
+    puts "ospf"
+    spawn telnet localhost 2604;
+}
+expect "*?assword:*"
+send -- "zebra\r"
+log_user 1
+
+#expect "#"
+#send -- "enable\r"
+
+send -- "$arg3\r"
+expect {
+    -ex "--More--" {send -- " "; exp_continue}
+    ">" {send -- "\r"}
+}
+#send -- "$arg3\r"
+
+
+if { $arg1 == 1 } {
+    interact
+} else {
+    expect ">"
+        send -- "exit\r"
+}
+puts "\n"
