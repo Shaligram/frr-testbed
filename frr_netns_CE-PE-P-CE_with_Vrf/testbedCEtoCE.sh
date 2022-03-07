@@ -14,9 +14,9 @@ VAR_PATH=`basename $CONFIG`
 
 ENABLE_SOURCE_VM_TO_NS_PING=0
 
-routers_instance="RT1 RT2 RT3 RT4 RT5"
+routers_instance="RT1 RT2 RT3 RT4 RT5 RT6 RT7 RT8"
 #routers_instance="RT1 RT2 RT3"
-run_routers="RT1 RT2 RT3 RT4 RT5"
+run_routers="RT1 RT2 RT3 RT4 RT5 RT6 RT7"   #ospf routers
 run_ldprouters="RT1 RT2 RT3"
 run_bgprouters="RT1 RT3"
 
@@ -127,9 +127,11 @@ create)
   ip link add RT6_to_RT3 type veth peer name RT3_to_RT6
   ip link add RT6_to_RT8 type veth peer name RT8_to_RT6
 
-  # REdundancy link 
-  ip link add RT1_to_RT22 type veth peer name RT22_to_RT1
-  ip link add RT22_to_RT3 type veth peer name RT3_to_RT22
+  # REdundancy link Turned off
+  if [ 1 -eq 2 ]; then 
+      ip link add RT1_to_RT22 type veth peer name RT22_to_RT1
+      ip link add RT22_to_RT3 type veth peer name RT3_to_RT22
+  fi
   # REdundancy link end
 
   # Connect wires(7*2way)
@@ -154,13 +156,15 @@ create)
   
   ip link set RT8_to_RT6 netns RT8 up
   
-  #Redundancy link up
-  ip link set RT1_to_RT22 netns RT1 up
-  
-  ip link set RT22_to_RT1 netns RT22 up
-  ip link set RT22_to_RT3 netns RT22 up
-  
-  ip link set RT3_to_RT22 netns RT3 up
+  #Redundancy link up turned off 
+  if [ 1 -eq 2 ]; then 
+      ip link set RT1_to_RT22 netns RT1 up
+
+      ip link set RT22_to_RT1 netns RT22 up
+      ip link set RT22_to_RT3 netns RT22 up
+
+      ip link set RT3_to_RT22 netns RT3 up
+  fi
   #Redundancy link up end
   
   # Vrf Configuration for handling RT4 traffic
@@ -172,6 +176,17 @@ create)
   ip netns exec RT3 ip link add RED type vrf table 1
   ip netns exec RT3 ip link set dev RT3_to_RT5 master RED
   ip netns exec RT3 ip link set dev RED up
+
+  # VRF BLUE config 
+  ip netns exec RT1 ip link add BLUE type vrf table 2
+  ip netns exec RT1 ip link set dev RT1_to_RT7 master BLUE
+  ip netns exec RT1 ip link set dev BLUE up
+  
+  ip netns exec RT3 ip link add BLUE type vrf table 2
+  ip netns exec RT3 ip link set dev RT3_to_RT6 master BLUE
+  ip netns exec RT3 ip link set dev BLUE up
+
+
   # Vrf Configuration for handling RT4 traffic end
   
  # MPLS Specific Config - Important for enabling MPLS processing 
@@ -241,9 +256,9 @@ delete)
    then 
        systemctl stop frr 
        cp /etc/frr/daemons.$VAR_PATH.orig /etc/frr/daemons 
+       ip link del OUT_to_RT4
    fi
 
-  ip link del OUT_to_RT4
   for ns in $routers_instance
   do
     ip netns delete ${ns}
@@ -261,6 +276,11 @@ test)
     ip netns exec RT4 ping 6.6.6.6 -c 1
     echo -e "\nSending 5 ICMP RT5 to RT4 VRF RED"
     ip netns exec RT5 ping 4.4.4.4 -c 1
+    
+    echo -e "\nSending 5 ICMP RT7 to RT6 VRF BLUE"
+    ip netns exec RT7 ping 6.6.6.6 -c 1
+    echo -e "\nSending 5 ICMP RT6 to RT7 VRF BLUE"
+    ip netns exec RT6 ping 4.4.4.4 -c 1
 
     echo -e "\ntraceroute 6.6.6.6 from RT4"
     ip netns exec RT4 traceroute -e 6.6.6.6
